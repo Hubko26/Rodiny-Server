@@ -125,7 +125,24 @@ function renderItem(item) {
   $('.name', li).textContent = item.name;
 
   const metaParts = [item.amount];
-  if (item.addedBy) metaParts.push(item.status === 'requested' ? 'chce ' + item.addedBy : 'od ' + item.addedBy);
+  if (item.status === 'requested') {
+    // Stĺpec „Požiadal(a)“: kto požiadavku vytvoril.
+    const who = $('.who', li);
+    who.hidden = false;
+    const caption = document.createElement('span');
+    caption.className = 'who-caption';
+    caption.textContent = 'Požiadal(a)';
+    who.append(caption);
+    for (const name of String(item.addedBy || 'neznámy').split(', ')) {
+      const pill = document.createElement('span');
+      pill.className = 'who-pill';
+      pill.textContent = name;
+      who.append(pill);
+    }
+    who.title = 'Požiadal(a): ' + (item.addedBy || 'neznámy') + (item.addedAt ? ', ' + dateTime(item.addedAt) : '');
+  } else if (item.addedBy) {
+    metaParts.push('od ' + item.addedBy);
+  }
   if (item.archived) metaParts.push('⚠ už sa nepredáva');
   $('.meta', li).textContent = metaParts.filter(Boolean).join(' · ');
 
