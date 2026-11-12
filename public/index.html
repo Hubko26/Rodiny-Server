@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f6b3f">
+  <title>Rodinný server</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Prihlásenie -->
+  <section id="login" class="screen" hidden>
+    <form id="login-form" class="card login-card">
+      <img src="icon.svg" alt="" class="login-icon">
+      <h1>Rodinný server</h1>
+      <p class="muted">Zadaj heslo, ktoré si dostal od rodiny.</p>
+      <input id="password" type="password" placeholder="Heslo" autocomplete="current-password" required>
+      <button type="submit" class="primary">Vstúpiť</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- Meno -->
+  <section id="name-screen" class="screen" hidden>
+    <form id="name-form" class="card login-card">
+      <h1>Ako sa voláš?</h1>
+      <p class="muted">Aby ostatní videli, kto čo pridal.</p>
+      <input id="name-input" type="text" maxlength="40" placeholder="Napr. Janka" required>
+      <button type="submit" class="primary">Pokračovať</button>
+    </form>
+  </section>
+
+  <!-- Aplikácia -->
+  <section id="app" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <img src="icon.svg" alt="">
+        <span>Rodinný server</span>
+      </div>
+      <nav class="tabs">
+        <a class="tab" href="#nakupy" data-view="nakupy">Nákupy</a>
+        <a class="tab" href="#archiv" data-view="archiv">Archív</a>
+      </nav>
+      <button id="user-btn" class="ghost small" title="Zmeniť meno"></button>
+    </header>
+
+    <!-- Nákupy -->
+    <main id="view-nakupy" class="content">
+      <form id="add-form" class="card add-card">
+        <label for="url-input" class="label">Požiadať o kúpu z rohlik.cz</label>
+        <div class="add-row">
+          <input id="url-input" type="url" inputmode="url" placeholder="https://www.rohlik.cz/1294559-okurka…" required>
+          <input id="qty-input" type="number" min="1" max="99" value="1" aria-label="Počet">
+          <button type="submit" class="primary" id="add-btn">Pridať</button>
+        </div>
+        <p class="hint">Otvor produkt na rohlik.cz, skopíruj adresu z prehliadača a vlož ju sem. <span id="admin-hint-name">Správca</span> ju potom potvrdí do košíka.</p>
+        <p id="add-error" class="error" role="alert"></p>
+      </form>
+
+      <div class="summary card">
+        <div class="stat">
+          <div class="label">Požiadavky</div>
+          <div id="sum-requested" class="stat-val">0 Kč</div>
+        </div>
+        <div class="stat">
+          <div class="label">V košíku</div>
+          <div id="sum-in_cart" class="stat-val">0 Kč</div>
+        </div>
+        <div class="stat">
+          <div class="label">Kúpené</div>
+          <div id="sum-bought" class="stat-val">0 Kč</div>
+        </div>
+        <div class="summary-foot">
+          <span id="prices-updated" class="muted small-text"></span>
+          <button id="refresh-btn" class="ghost small" type="button">↻ Obnoviť ceny</button>
+        </div>
+      </div>
+
+      <section class="group" data-status="requested">
+        <div class="section-head">
+          <h2>Požiadavky na kúpu <span class="count"></span></h2>
+          <button class="ghost small admin-only" data-move="requested:in_cart" type="button">Všetko do košíka</button>
+        </div>
+        <ul class="list"></ul>
+        <p class="empty muted">Žiadne požiadavky. Pridaj, čo treba kúpiť.</p>
+      </section>
+
+      <section class="group" data-status="in_cart">
+        <div class="section-head">
+          <h2>V košíku <span class="count"></span></h2>
+          <button class="ghost small admin-only" data-move="in_cart:bought" type="button">Celý košík kúpený</button>
+        </div>
+        <ul class="list"></ul>
+        <p class="empty muted">Košík je prázdny.</p>
+      </section>
+
+      <section class="group" data-status="bought">
+        <div class="section-head">
+          <h2>Kúpené <span class="count"></span></h2>
+          <button id="finalize-btn" class="primary small admin-only" type="button">Sfinalizovať nákup</button>
+        </div>
+        <ul class="list"></ul>
+        <p class="empty muted">Zatiaľ nič kúpené.</p>
+      </section>
+    </main>
+
+    <!-- Archív -->
+    <main id="view-archiv" class="content" hidden>
+      <div class="section-head">
+        <h2 class="page-title">História nákupov</h2>
+        <span id="archive-total" class="muted small-text"></span>
+      </div>
+      <div id="archive-list" class="archive-list"></div>
+      <p id="archive-empty" class="empty muted">Archív je prázdny. Nákup sa sem dostane po sfinalizovaní.</p>
+    </main>
+
+    <footer class="footer">
+      <span id="live-status" class="dot"></span>
+      <span id="live-text" class="muted small-text">Pripájam…</span>
+      <button id="logout-btn" class="ghost small" type="button">Odhlásiť</button>
+    </footer>
+  </section>
+
+  <template id="item-tpl">
+    <li class="item">
+      <a class="thumb" target="_blank" rel="noopener"><img alt="" loading="lazy"></a>
+      <div class="info">
+        <a class="name" target="_blank" rel="noopener"></a>
+        <div class="meta muted"></div>
+      </div>
+      <div class="right">
+        <div class="price"></div>
+        <div class="qty">
+          <button class="minus" type="button" aria-label="Menej">−</button>
+          <span class="qty-val"></span>
+          <button class="plus" type="button" aria-label="Viac">+</button>
+        </div>
+      </div>
+      <div class="actions"></div>
+    </li>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

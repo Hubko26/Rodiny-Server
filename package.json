@@ -1,0 +1,9 @@
+{
+  "name": "rodinny-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rodinný server – zdieľaný nákupný zoznam z rohlik.cz",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
