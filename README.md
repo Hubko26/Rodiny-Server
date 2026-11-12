@@ -25,17 +25,17 @@ Ceny sa obnovujú automaticky každých 6 hodín, alebo tlačidlom „Obnoviť c
 
 ## Ako to funguje
 
-1. Ktokoľvek z rodiny (heslo ) pridá produkt odkazom z rohlik.cz. Položka sa objaví v **Požiadavkách na kúpu**.
-2. Správca (, prihlási sa heslom  z ) požiadavku potvrdí 🛒, tým ju dá **do košíka**, alebo ju zamietne.
+1. Ktokoľvek z rodiny (heslo `password`) pridá produkt odkazom z rohlik.cz. Položka sa objaví v **Požiadavkách na kúpu**.
+2. Správca (`adminName`, prihlási sa heslom `adminPassword` z `config.json`) požiadavku potvrdí 🛒, tým ju dá **do košíka**, alebo ju zamietne.
 3. Po objednaní klikne správca na **✓ Kúpené**: celý košík sa uloží do **Archívu** ako jeden nákup
    a zároveň ostane na prvej stránke ako **Aktuálny nákup** (na hlasovanie, kto čo zjedol).
 4. Tlačidlom **Nový nákup** správca aktuálny nákup z prvej stránky odstráni, ostane už iba v archíve.
 
-**Kto koľko platí:** pri kúpených položkách aj v archíve každý klikne na „🍽 Jedol(a) som“ pri tom,
+**Kto koľko platí:** pri aktuálnom nákupe aj v archíve každý klikne na „🍽 Jedol(a) som“ pri tom,
 čo jedol/pil. Cena položky sa delí rovným dielom medzi všetkých, čo klikli. Za položky, pri ktorých
-nikto nehlasoval, platí správca. Súhrn „Kto koľko platí“ je pod kúpenými položkami a pri každom nákupe v archíve.
+nikto nehlasoval, platí správca. Súhrn „Kto koľko platí“ je pri aktuálnom nákupe a pri každom nákupe v archíve.
 
-Bežní používatelia môžu meniť a mazať iba požiadavky. Košík, kúpené a archív spravuje iba správca.
+Bežní používatelia môžu meniť a mazať iba požiadavky. Košík, nákupy a archív spravuje iba správca.
 
 ## Pridanie produktu
 
