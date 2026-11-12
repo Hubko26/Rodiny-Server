@@ -30,6 +30,10 @@ Ceny sa obnovujú automaticky každých 6 hodín, alebo tlačidlom „Obnoviť c
 3. Po objednaní označí košík ako **Kúpené**.
 4. Tlačidlom **Sfinalizovať nákup** sa kúpené položky presunú do **Archívu** (história nákupov s cenami).
 
+**Kto koľko platí:** pri kúpených položkách aj v archíve každý klikne na „🍽 Jedol(a) som“ pri tom,
+čo jedol/pil. Cena položky sa delí rovným dielom medzi všetkých, čo klikli. Za položky, pri ktorých
+nikto nehlasoval, platí správca. Súhrn „Kto koľko platí“ je pod kúpenými položkami a pri každom nákupe v archíve.
+
 Bežní používatelia môžu meniť a mazať iba požiadavky. Košík, kúpené a archív spravuje iba správca.
 
 ## Pridanie produktu

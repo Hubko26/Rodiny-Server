@@ -100,8 +100,10 @@
           <h2>Kúpené <span class="count"></span></h2>
           <button id="finalize-btn" class="primary small admin-only" type="button">Sfinalizovať nákup</button>
         </div>
+        <p class="hint vote-hint">Klikni na <b>🍽 Jedol(a) som</b> pri všetkom, čo si jedol/pil. Cena sa rozdelí rovným dielom medzi všetkých, čo klikli. Za položky bez hlasu platí <span class="admin-name">správca</span>.</p>
         <ul class="list"></ul>
         <p class="empty muted">Zatiaľ nič kúpené.</p>
+        <div class="split-slot"></div>
       </section>
     </main>
 
@@ -139,6 +141,7 @@
         </div>
       </div>
       <div class="actions"></div>
+      <div class="votes" hidden></div>
     </li>
   </template>
 

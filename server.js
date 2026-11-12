@@ -477,6 +477,29 @@ async function handleApi(req, res, url) {
     return send(res, 201, { archive: entry });
   }
 
+  // Hlasovanie "kto to zjedol": prepne meno hlasujúceho pri kúpenej položke
+  // (v aktuálnom nákupe alebo v archíve). Cena položky sa potom delí rovným dielom
+  // medzi všetkých, ktorí pri nej hlasovali.
+  if (pathname === '/api/vote' && method === 'POST') {
+    const body = await readBody(req);
+    const name = isAdmin ? ADMIN_NAME : cleanName(body.name);
+    if (!name) return send(res, 400, { error: 'Najprv si nastav meno.' });
+    let item;
+    if (body.archiveId) {
+      const entry = data.archive.find((a) => a.id === body.archiveId);
+      item = entry && entry.items.find((i) => i.id === body.itemId);
+    } else {
+      item = data.items.find((i) => i.id === body.itemId && i.status === 'bought');
+    }
+    if (!item) return send(res, 404, { error: 'Položka neexistuje alebo ešte nie je kúpená.' });
+    const eaters = Array.isArray(item.eaters) ? item.eaters : [];
+    const has = eaters.includes(name);
+    if (!has && eaters.length >= 50) return send(res, 400, { error: 'Príliš veľa hlasov.' });
+    item.eaters = has ? eaters.filter((n) => n !== name) : [...eaters, name];
+    saveData();
+    return send(res, 200, { eaters: item.eaters });
+  }
+
   const archiveMatch = pathname.match(/^\/api\/archive\/([\w-]+)$/);
   if (archiveMatch) {
     if (!isAdmin) return adminOnly();

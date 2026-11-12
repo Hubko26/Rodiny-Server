@@ -60,6 +60,7 @@ function showApp() {
   $('#user-btn').textContent = (isAdmin() ? '★ ' : '👤 ') + getName();
   $('#user-btn').disabled = isAdmin();
   $('#admin-hint-name').textContent = me.adminName;
+  for (const el of $$('.admin-name')) el.textContent = me.adminName;
   showView();
   connect();
 }
@@ -188,7 +189,104 @@ function renderItem(item) {
   } else if (item.status === 'requested') {
     actions.append(del('Odstrániť požiadavku'));
   }
+
+  if (item.status === 'bought') {
+    const votes = $('.votes', li);
+    votes.hidden = false;
+    votes.append(...voteWidget(item, null));
+  }
   return li;
+}
+
+// ---------- Hlasovanie "kto to zjedol" ----------
+function voteWidget(item, archiveId) {
+  const eaters = item.eaters || [];
+  const mine = eaters.includes(getName());
+  const btn = button(mine ? '✓ Jedol(a) som' : '🍽 Jedol(a) som', mine ? 'Zrušiť môj hlas' : 'Označiť, že som to jedol/pil', () =>
+    act('/api/vote', { method: 'POST', body: { itemId: item.id, archiveId, name: getName() } }),
+  'vote-btn' + (mine ? ' on' : ''));
+
+  const chips = document.createElement('div');
+  chips.className = 'eaters';
+  if (eaters.length) {
+    for (const name of eaters) {
+      const chip = document.createElement('span');
+      chip.className = 'eater' + (name === getName() ? ' me' : '');
+      chip.textContent = name;
+      chips.append(chip);
+    }
+    const share = document.createElement('span');
+    share.className = 'share muted';
+    share.textContent = eaters.length > 1 ? 'po ' + money(lineTotal(item) / eaters.length) : 'celé ' + money(lineTotal(item));
+    chips.append(share);
+  } else {
+    const none = document.createElement('span');
+    none.className = 'muted';
+    none.textContent = 'Zatiaľ nikto';
+    chips.append(none);
+  }
+  return [btn, chips];
+}
+
+// Rozdelí ceny položiek medzi hlasujúcich rovným dielom.
+function computeSplit(items) {
+  const people = new Map();
+  let unassigned = 0;
+  let unassignedCount = 0;
+  for (const item of items) {
+    const total = lineTotal(item);
+    const eaters = item.eaters || [];
+    if (!eaters.length) {
+      unassigned += total;
+      unassignedCount++;
+      continue;
+    }
+    for (const name of eaters) people.set(name, (people.get(name) || 0) + total / eaters.length);
+  }
+  // Za položky, za ktoré nikto nehlasoval, platí správca (David).
+  if (unassignedCount) people.set(me.adminName, (people.get(me.adminName) || 0) + unassigned);
+  const rows = [...people].sort((a, b) => b[1] - a[1]);
+  return { rows, unassigned, unassignedCount, total: sum(items) };
+}
+
+function renderSplit(items) {
+  const { rows, unassigned, unassignedCount, total } = computeSplit(items);
+  const box = document.createElement('div');
+  box.className = 'split card';
+  const head = document.createElement('div');
+  head.className = 'split-head';
+  head.textContent = 'Kto koľko platí';
+  box.append(head);
+
+  const list = document.createElement('ul');
+  list.className = 'split-list';
+  const row = (label, amount, cls = '', note = '') => {
+    const li = document.createElement('li');
+    if (cls) li.className = cls;
+    const a = document.createElement('span');
+    a.textContent = label;
+    if (note) {
+      const n = document.createElement('small');
+      n.className = 'muted';
+      n.textContent = note;
+      a.append(document.createElement('br'), n);
+    }
+    const b = document.createElement('span');
+    b.className = 'num';
+    b.textContent = money(amount);
+    li.append(a, b);
+    list.append(li);
+  };
+  const plural = (n) => (n === 1 ? 'položka' : n < 5 ? 'položky' : 'položiek');
+  for (const [name, amount] of rows) {
+    const note = name === me.adminName && unassignedCount
+      ? `vrátane ${money(unassigned)} za ${unassignedCount} ${plural(unassignedCount)}, za ktoré nikto nehlasoval`
+      : '';
+    row(name, amount, name === getName() ? 'me' : '', note);
+  }
+  row('Spolu', total, 'total');
+  box.append(list);
+  return box;
 }
 
 function patch(item, body) {
@@ -237,10 +335,16 @@ function renderArchiveEntry(entry) {
     const price = document.createElement('span');
     price.className = 'num';
     price.textContent = money(lineTotal(item));
-    row.append(name, amount, qty, price);
+    const votes = document.createElement('div');
+    votes.className = 'votes';
+    votes.append(...voteWidget(item, entry.id));
+    row.append(name, amount, qty, price, votes);
     table.append(row);
   }
-  details.append(table);
+  const hint = document.createElement('p');
+  hint.className = 'hint archive-hint';
+  hint.textContent = 'Klikni na 🍽 Jedol(a) som pri všetkom, čo si jedol/pil. Za položky bez hlasu platí ' + me.adminName + '.';
+  details.append(hint, table, renderSplit(entry.items));
 
   if (isAdmin()) {
     const bar = document.createElement('div');
@@ -271,6 +375,10 @@ function render() {
     $('.count', group).textContent = items.length ? '(' + items.length + ')' : '';
     for (const b of $$('[data-move], #finalize-btn', group)) b.hidden = !isAdmin() || items.length === 0;
     $('#sum-' + status).textContent = money(sum(items));
+    if (status === 'bought') {
+      $('.vote-hint', group).hidden = items.length === 0;
+      $('.split-slot', group).replaceChildren(...(items.length ? [renderSplit(items)] : []));
+    }
   }
   $('#prices-updated').textContent = state.pricesUpdatedAt ? 'Ceny z ' + dateTime(state.pricesUpdatedAt) : '';
 

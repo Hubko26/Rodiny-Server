@@ -181,6 +181,33 @@ a.name[href]:hover { text-decoration: underline; }
   .actions { grid-area: a; }
 }
 
+/* Hlasovanie "kto to zjedol" */
+.votes { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.item .votes { border-top: 1px dashed var(--line); padding-top: 8px; }
+.item[data-status=bought] { opacity: 1; }
+.vote-btn {
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
+  font-size: 13px; font-weight: 600; background: var(--surface); white-space: nowrap;
+}
+.vote-btn:hover { border-color: var(--accent); }
+.vote-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.eaters { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 13px; }
+.eater { background: var(--accent-soft); border-radius: 999px; padding: 2px 9px; font-weight: 600; }
+.eater.me { outline: 2px solid var(--accent); outline-offset: -2px; }
+.share { margin-left: 4px; }
+.vote-hint, .archive-hint { margin: 0; }
+.archive-hint { padding: 10px 16px 0; }
+
+.split { display: grid; gap: 8px; margin-top: 6px; }
+.split-head { font-weight: 700; }
+.split-list { list-style: none; margin: 0; padding: 0; }
+.split-list li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.split-list li:last-child { border-bottom: 0; }
+.split-list .num { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.split-list .me { font-weight: 700; }
+.split-list .total { border-top: 2px solid var(--line); font-weight: 700; }
+.archive-entry .split { margin: 8px 16px 0; box-shadow: none; background: var(--bg); }
+
 /* Archív */
 .page-title { font-size: 20px !important; }
 .archive-list { display: grid; gap: 10px; }

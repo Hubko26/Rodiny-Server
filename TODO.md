@@ -1,15 +1,14 @@
 # TODO
 
-## Kalkulačka „kto čo zjedol“
+## Hotové
 
-Rozdeliť cenu sfinalizovaného nákupu z archívu medzi ľudí alebo rodiny podľa toho, kto čo spotreboval.
+- Kalkulačka „kto čo zjedol“: pri kúpených položkách a v archíve každý klikne na
+  „🍽 Jedol(a) som“, cena sa delí rovným dielom medzi hlasujúcich, za položky bez hlasu platí správca.
 
-- Vychádza z archívu: každý nákup má položky s počtom kusov a cenou (`data.archive[].items`).
-- Pri každej položke určiť, kto ju jedol: celé kusy konkrétnym ľuďom/rodinám, alebo rovnakým dielom medzi vybraných.
-- Predvolené: položka sa delí rovnako medzi všetkých účastníkov nákupu.
-- Výsledok: koľko má kto zaplatiť a komu (kto nákup platil).
-- Treba rozhodnúť: delí sa medzi ľudí alebo medzi rodiny? Kto môže rozdelenie upravovať (iba David, alebo každý)?
+## Nápady na ďalej
 
-## Ďalšie nápady
-
+- Uzavretie hlasovania pri nákupe v archíve (aby sa po vyúčtovaní už nedalo meniť).
+- Správca môže hlasovať za iných (napr. deti bez telefónu).
+- Delenie podľa rodín namiesto ľudí.
+- Kto nákup zaplatil a kto komu koľko dlží (vyrovnanie).
 - Plánovanie chát (termíny, kto ide).
