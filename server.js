@@ -26,6 +26,7 @@ const PASSWORD = String(process.env.PASSWORD || config.password);
 const ADMIN_NAME = String(config.adminName || 'Správca');
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || config.adminPassword || '');
 const STATUSES = ['requested', 'in_cart', 'bought'];
+const MAX_ITEMS = 300; // max položiek v aktuálnom nákupe (ochrana pred zahltením)
 const PRICE_REFRESH_MS = 6 * 60 * 60 * 1000; // ceny obnovovať každých 6 h
 const ROHLIK_API = 'https://www.rohlik.cz/api/v1';
 
@@ -73,20 +74,66 @@ function getRole(req) {
   return sessionRole(getCookie(req, 'session'));
 }
 
-// Brzda na hádanie hesla: max 10 pokusov za 10 minút z jednej IP.
-const loginAttempts = new Map();
-function clientIp(req) {
-  return (
-    req.headers['cf-connecting-ip'] ||
-    String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
-    req.socket.remoteAddress
-  );
+// Brzda na hádanie hesla:
+//  - max 10 zlých pokusov za 10 minút z jednej IP,
+//  - poistka: max 30 zlých pokusov za 10 minút spolu zo všetkých IP
+//    (útočník s mnohými IP adresami tak nestihne heslo uhádnuť; prihlásení ostávajú prihlásení).
+const LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const PER_IP_LIMIT = 10;
+const GLOBAL_LIMIT = 30;
+const loginFailures = new Map(); // ip -> [časy]
+let globalFailures = [];
+
+// Hlavičkám X-Forwarded-For veríme iba vtedy, keď spojenie prišlo z tohto počítača
+// (Tailscale Funnel). Klient si môže hlavičku poslať sám, preto berieme POSLEDNÚ
+// hodnotu – tú pripája proxy, nie klient. Iné hlavičky (napr. CF-Connecting-IP) ignorujeme.
+function isLoopback(addr) {
+  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
 }
-function tooManyAttempts(ip) {
+function clientIp(req) {
+  const remote = req.socket.remoteAddress || '';
+  if (!isLoopback(remote)) return remote;
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return chain.length ? chain[chain.length - 1] : remote;
+}
+function recent(list) {
   const now = Date.now();
-  const list = (loginAttempts.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
-  loginAttempts.set(ip, list);
-  return list.length >= 10;
+  return list.filter((t) => now - t < LOGIN_WINDOW_MS);
+}
+function loginBlocked(ip) {
+  globalFailures = recent(globalFailures);
+  const list = recent(loginFailures.get(ip) || []);
+  if (list.length) loginFailures.set(ip, list); else loginFailures.delete(ip);
+  return list.length >= PER_IP_LIMIT || globalFailures.length >= GLOBAL_LIMIT;
+}
+function recordFailure(ip) {
+  const now = Date.now();
+  const list = loginFailures.get(ip) || [];
+  list.push(now);
+  loginFailures.set(ip, list);
+  globalFailures.push(now);
+  console.warn(`[${new Date().toISOString()}] Zlé heslo z ${ip} (spolu za 10 min: ${globalFailures.length})`);
+}
+// Pamäť nerastie donekonečna: staré záznamy sa raz za čas vyčistia.
+setInterval(() => {
+  for (const [ip, list] of loginFailures) {
+    const r = recent(list);
+    if (r.length) loginFailures.set(ip, r); else loginFailures.delete(ip);
+  }
+}, LOGIN_WINDOW_MS).unref();
+
+// Jednoduchý limit pre drahšie akcie (volania na rohlik.cz).
+const actionTimes = new Map(); // kľúč -> [časy]
+function rateLimited(key, max, windowMs) {
+  const now = Date.now();
+  const list = (actionTimes.get(key) || []).filter((t) => now - t < windowMs);
+  if (list.length >= max) {
+    actionTimes.set(key, list);
+    return true;
+  }
+  list.push(now);
+  actionTimes.set(key, list);
+  return false;
 }
 
 // ---------- Dáta ----------
@@ -271,13 +318,13 @@ async function handleApi(req, res, url) {
 
   if (pathname === '/api/login' && method === 'POST') {
     const ip = clientIp(req);
-    if (tooManyAttempts(ip)) return send(res, 429, { error: 'Veľa pokusov, skús o 10 minút.' });
+    if (loginBlocked(ip)) return send(res, 429, { error: 'Veľa pokusov, skús o 10 minút.' });
     const body = await readBody(req);
     let role = null;
     if (safeEqual(body.password, ADMIN_PASSWORD)) role = 'admin';
     else if (safeEqual(body.password, PASSWORD)) role = 'user';
     if (!role) {
-      loginAttempts.get(ip).push(Date.now());
+      recordFailure(ip);
       return send(res, 401, { error: 'Nesprávne heslo.' });
     }
     const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
@@ -325,6 +372,14 @@ async function handleApi(req, res, url) {
     }
     const qty = Math.max(1, Math.min(99, parseInt(body.qty, 10) || 1));
     const who = isAdmin ? ADMIN_NAME : cleanName(body.addedBy);
+
+    // Ochrana pred zahltením: limit volaní na rohlik.cz a celkový počet položiek.
+    if (rateLimited('add', 60, 60 * 1000)) {
+      return send(res, 429, { error: 'Príliš veľa pridávania naraz, skús o chvíľu.' });
+    }
+    if (data.items.length >= MAX_ITEMS) {
+      return send(res, 400, { error: `Zoznam je plný (${MAX_ITEMS} položiek). ${ADMIN_NAME} musí najprv sfinalizovať nákup.` });
+    }
 
     const existing = data.items.find((i) => i.productId === productId && i.status === 'requested');
     if (existing) {
@@ -444,6 +499,9 @@ async function handleApi(req, res, url) {
 
 
   if (pathname === '/api/shopping/refresh-prices' && method === 'POST') {
+    if (rateLimited('refresh', 1, 60 * 1000)) {
+      return send(res, 429, { error: 'Ceny sa obnovovali pred chvíľou, skús o minútu.' });
+    }
     try {
       await refreshPrices();
       return send(res, 200, { ok: true, pricesUpdatedAt: data.pricesUpdatedAt });
@@ -459,6 +517,15 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  // Stránka nesmie byť vložená do cudzieho webu (clickjacking) a smie načítať
+  // iba vlastné skripty/štýly a obrázky z CDN Rohlíka.
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; img-src 'self' https://cdn.rohlik.cz; script-src 'self'; style-src 'self'; " +
+      "connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",
+  );
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000');
   try {
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Metóda nie je povolená');
