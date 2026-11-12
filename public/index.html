@@ -69,8 +69,8 @@
           <div id="sum-in_cart" class="stat-val">0 Kč</div>
         </div>
         <div class="stat">
-          <div class="label">Kúpené</div>
-          <div id="sum-bought" class="stat-val">0 Kč</div>
+          <div class="label">Aktuálny nákup</div>
+          <div id="sum-current" class="stat-val">0 Kč</div>
         </div>
         <div class="summary-foot">
           <span id="prices-updated" class="muted small-text"></span>
@@ -80,7 +80,8 @@
 
       <section class="group" data-status="requested">
         <div class="section-head">
-          <h2>Požiadavky na kúpu <span class="count"></span></h2>          <button class="ghost small admin-only" data-move="requested:in_cart" type="button">Všetko do košíka</button>
+          <h2>Požiadavky na kúpu <span class="count"></span></h2>
+          <button class="ghost small admin-only" data-move="requested:in_cart" type="button">Všetko do košíka</button>
         </div>
         <ul class="list"></ul>
         <p class="empty muted">Žiadne požiadavky. Pridaj, čo treba kúpiť.</p>
@@ -89,21 +90,18 @@
       <section class="group" data-status="in_cart">
         <div class="section-head">
           <h2>V košíku <span class="count"></span></h2>
-          <button class="ghost small admin-only" data-move="in_cart:bought" type="button">Celý košík kúpený</button>
+          <button id="purchase-btn" class="primary small admin-only" type="button">✓ Kúpené</button>
         </div>
         <ul class="list"></ul>
         <p class="empty muted">Košík je prázdny.</p>
       </section>
 
-      <section class="group" data-status="bought">
+      <section id="current-section" class="group" hidden>
         <div class="section-head">
-          <h2>Kúpené <span class="count"></span></h2>
-          <button id="finalize-btn" class="primary small admin-only" type="button">Sfinalizovať nákup</button>
+          <h2>Aktuálny nákup</h2>
+          <button id="new-purchase-btn" class="ghost small admin-only" type="button">Nový nákup</button>
         </div>
-        <p class="hint vote-hint">Klikni na <b>🍽 Jedol(a) som</b> pri všetkom, čo si jedol/pil. Cena sa rozdelí rovným dielom medzi všetkých, čo klikli. Za položky bez hlasu platí <span class="admin-name">správca</span>.</p>
-        <ul class="list"></ul>
-        <p class="empty muted">Zatiaľ nič kúpené.</p>
-        <div class="split-slot"></div>
+        <div id="current-slot"></div>
       </section>
     </main>
 

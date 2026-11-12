@@ -25,7 +25,7 @@ const PASSWORD = String(process.env.PASSWORD || config.password);
 // Správca (David) má vlastné heslo: potvrdzuje požiadavky, finalizuje nákupy.
 const ADMIN_NAME = String(config.adminName || 'Správca');
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || config.adminPassword || '');
-const STATUSES = ['requested', 'in_cart', 'bought'];
+const STATUSES = ['requested', 'in_cart'];
 const MAX_ITEMS = 300; // max položiek v aktuálnom nákupe (ochrana pred zahltením)
 const PRICE_REFRESH_MS = 6 * 60 * 60 * 1000; // ceny obnovovať každých 6 h
 const ROHLIK_API = 'https://www.rohlik.cz/api/v1';
@@ -137,8 +137,9 @@ function rateLimited(key, max, windowMs) {
 }
 
 // ---------- Dáta ----------
-// data.items   – aktuálny nákup; každá položka má status requested | in_cart | bought
-// data.archive – sfinalizované nákupy (história), najnovší prvý
+// data.items   – požiadavky a košík; každá položka má status requested | in_cart
+// data.archive – kúpené nákupy (história), najnovší prvý
+// data.currentPurchaseId – nákup z archívu zobrazený na prvej stránke (na hlasovanie)
 function loadData() {
   let d;
   try {
@@ -149,9 +150,11 @@ function loadData() {
   d.items = d.items || [];
   d.archive = d.archive || [];
   d.pricesUpdatedAt = d.pricesUpdatedAt || null;
+  d.currentPurchaseId = d.currentPurchaseId || null;
   for (const item of d.items) {
-    // Staršie dáta mali iba bought: true/false.
-    if (!STATUSES.includes(item.status)) item.status = item.bought ? 'bought' : 'requested';
+    // Staršie dáta: bought: true/false alebo stav 'bought' (dnes sa kúpené ukladá rovno do archívu).
+    if (item.status === 'bought' || (item.status === undefined && item.bought)) item.status = 'in_cart';
+    if (!STATUSES.includes(item.status)) item.status = 'requested';
     delete item.bought;
   }
   return d;
@@ -221,9 +224,9 @@ async function fetchProduct(id) {
   };
 }
 
-// Kúpeným položkám necháva zaplatenú cenu, obnovuje iba požiadavky a košík.
+// Obnovuje ceny požiadaviek a košíka (archív si necháva zaplatené ceny).
 async function refreshPrices() {
-  const open = data.items.filter((i) => i.status !== 'bought' && i.productId);
+  const open = data.items.filter((i) => i.productId);
   const ids = [...new Set(open.map((i) => i.productId))];
   if (!ids.length) return;
   const byId = new Map();
@@ -378,7 +381,7 @@ async function handleApi(req, res, url) {
       return send(res, 429, { error: 'Príliš veľa pridávania naraz, skús o chvíľu.' });
     }
     if (data.items.length >= MAX_ITEMS) {
-      return send(res, 400, { error: `Zoznam je plný (${MAX_ITEMS} položiek). ${ADMIN_NAME} musí najprv sfinalizovať nákup.` });
+      return send(res, 400, { error: `Zoznam je plný (${MAX_ITEMS} položiek). ${ADMIN_NAME} musí najprv označiť košík ako kúpený.` });
     }
 
     const existing = data.items.find((i) => i.productId === productId && i.status === 'requested');
@@ -437,7 +440,7 @@ async function handleApi(req, res, url) {
     }
   }
 
-  // Hromadná zmena stavu, napr. všetky požiadavky do košíka, celý košík kúpený.
+  // Hromadná zmena stavu, napr. všetky požiadavky do košíka.
   if (pathname === '/api/shopping/move' && method === 'POST') {
     if (!isAdmin) return adminOnly();
     const body = await readBody(req);
@@ -455,13 +458,14 @@ async function handleApi(req, res, url) {
     return send(res, 200, { ok: true });
   }
 
-  // Sfinalizovať nákup: kúpené položky sa presunú do archívu ako jeden historický nákup.
-  if (pathname === '/api/shopping/finalize' && method === 'POST') {
+  // "Kúpené": celý košík sa uloží do archívu ako jeden nákup a zobrazí sa na prvej
+  // stránke ako aktuálny nákup (na hlasovanie, kto čo zjedol).
+  if (pathname === '/api/shopping/purchase' && method === 'POST') {
     if (!isAdmin) return adminOnly();
     const body = await readBody(req);
-    const bought = data.items.filter((i) => i.status === 'bought');
-    if (!bought.length) return send(res, 400, { error: 'Nie je čo finalizovať, žiadna položka nie je kúpená.' });
-    const total = bought.reduce((s, i) => s + (typeof i.price === 'number' ? i.price * i.qty : 0), 0);
+    const cart = data.items.filter((i) => i.status === 'in_cart');
+    if (!cart.length) return send(res, 400, { error: 'Košík je prázdny.' });
+    const total = cart.reduce((s, i) => s + (typeof i.price === 'number' ? i.price * i.qty : 0), 0);
     const now = new Date();
     const entry = {
       id: crypto.randomUUID(),
@@ -469,28 +473,32 @@ async function handleApi(req, res, url) {
       finalizedAt: now.toISOString(),
       finalizedBy: ADMIN_NAME,
       total: Math.round(total * 100) / 100,
-      items: bought.map(({ status, statusAt, ...rest }) => rest),
+      items: cart.map(({ status, statusAt, ...rest }) => rest),
     };
     data.archive.unshift(entry);
-    data.items = data.items.filter((i) => i.status !== 'bought');
+    data.items = data.items.filter((i) => i.status !== 'in_cart');
+    data.currentPurchaseId = entry.id;
     saveData();
     return send(res, 201, { archive: entry });
   }
 
-  // Hlasovanie "kto to zjedol": prepne meno hlasujúceho pri kúpenej položke
-  // (v aktuálnom nákupe alebo v archíve). Cena položky sa potom delí rovným dielom
+  // "Nový nákup": aktuálny nákup zmizne z prvej stránky, ostane iba v archíve.
+  if (pathname === '/api/shopping/new-purchase' && method === 'POST') {
+    if (!isAdmin) return adminOnly();
+    data.currentPurchaseId = null;
+    saveData();
+    return send(res, 200, { ok: true });
+  }
+
+  // Hlasovanie "kto to zjedol": prepne meno hlasujúceho pri položke kúpeného nákupu
+  // (aktuálneho alebo v archíve). Cena položky sa potom delí rovným dielom
   // medzi všetkých, ktorí pri nej hlasovali.
   if (pathname === '/api/vote' && method === 'POST') {
     const body = await readBody(req);
     const name = isAdmin ? ADMIN_NAME : cleanName(body.name);
     if (!name) return send(res, 400, { error: 'Najprv si nastav meno.' });
-    let item;
-    if (body.archiveId) {
-      const entry = data.archive.find((a) => a.id === body.archiveId);
-      item = entry && entry.items.find((i) => i.id === body.itemId);
-    } else {
-      item = data.items.find((i) => i.id === body.itemId && i.status === 'bought');
-    }
+    const entry = data.archive.find((a) => a.id === body.archiveId);
+    const item = entry && entry.items.find((i) => i.id === body.itemId);
     if (!item) return send(res, 404, { error: 'Položka neexistuje alebo ešte nie je kúpená.' });
     const eaters = Array.isArray(item.eaters) ? item.eaters : [];
     const has = eaters.includes(name);
@@ -511,15 +519,15 @@ async function handleApi(req, res, url) {
       saveData();
       return send(res, 200, { archive: entry });
     }
-    // Vrátiť z archívu späť medzi kúpené (napr. omylom finalizované).
+    // Vrátiť nákup späť do košíka (napr. omylom kliknuté "Kúpené"). Hlasy ostanú pri položkách.
     if (method === 'POST' && url.searchParams.get('action') === 'reopen') {
-      for (const item of entry.items) data.items.push({ ...item, status: 'bought' });
+      for (const item of entry.items) data.items.push({ ...item, status: 'in_cart' });
       data.archive = data.archive.filter((a) => a !== entry);
+      if (data.currentPurchaseId === entry.id) data.currentPurchaseId = null;
       saveData();
       return send(res, 200, { ok: true });
     }
   }
-
 
   if (pathname === '/api/shopping/refresh-prices' && method === 'POST') {
     if (rateLimited('refresh', 1, 60 * 1000)) {

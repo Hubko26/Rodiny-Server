@@ -208,6 +208,9 @@ a.name[href]:hover { text-decoration: underline; }
 .split-list .total { border-top: 2px solid var(--line); font-weight: 700; }
 .archive-entry .split { margin: 8px 16px 0; box-shadow: none; background: var(--bg); }
 
+.badge { display: inline-block; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 700; vertical-align: middle; }
+.archive-entry.is-current { border-color: var(--accent); }
+
 /* Archív */
 .page-title { font-size: 20px !important; }
 .archive-list { display: grid; gap: 10px; }

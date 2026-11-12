@@ -178,22 +178,12 @@ function renderItem(item) {
     if (item.status === 'requested') {
       actions.append(button('🛒', 'Potvrdiť – dať do košíka', () => patch(item, { status: 'in_cart' }), 'icon-btn go'));
       actions.append(del('Zamietnuť požiadavku'));
-    } else if (item.status === 'in_cart') {
-      actions.append(button('✓', 'Kúpené', () => patch(item, { status: 'bought' }), 'icon-btn go'));
+    } else {
       actions.append(button('↩', 'Vrátiť medzi požiadavky', () => patch(item, { status: 'requested' })));
       actions.append(del('Odstrániť z košíka'));
-    } else {
-      actions.append(button('↩', 'Vrátiť do košíka', () => patch(item, { status: 'in_cart' })));
-      actions.append(del('Odstrániť'));
     }
   } else if (item.status === 'requested') {
     actions.append(del('Odstrániť požiadavku'));
-  }
-
-  if (item.status === 'bought') {
-    const votes = $('.votes', li);
-    votes.hidden = false;
-    votes.append(...voteWidget(item, null));
   }
   return li;
 }
@@ -296,10 +286,11 @@ function patch(item, body) {
 // ---------- Archív ----------
 // Rozbalené nákupy ostanú rozbalené aj po live aktualizácii.
 const openArchive = new Set();
-function renderArchiveEntry(entry) {
+// current = aktuálny nákup na prvej stránke: vždy rozbalený.
+function renderArchiveEntry(entry, current = false) {
   const details = document.createElement('details');
-  details.className = 'card archive-entry';
-  details.open = openArchive.has(entry.id);
+  details.className = 'card archive-entry' + (current ? ' is-current' : '');
+  details.open = current || openArchive.has(entry.id);
   details.addEventListener('toggle', () => {
     if (details.open) openArchive.add(entry.id); else openArchive.delete(entry.id);
   });
@@ -310,9 +301,15 @@ function renderArchiveEntry(entry) {
   title.textContent = entry.title;
   const meta = document.createElement('div');
   meta.className = 'muted small-text';
-  meta.textContent = dateTime(entry.finalizedAt) + ' · ' + entry.items.length + ' položiek';
+  meta.textContent = 'kúpené ' + dateTime(entry.finalizedAt) + ' · ' + entry.items.length + ' položiek';
   const left = document.createElement('div');
   left.append(title, meta);
+  if (!current && entry.id === state.currentPurchaseId) {
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = 'aktuálny';
+    title.append(' ', badge);
+  }
   const total = document.createElement('div');
   total.className = 'archive-total';
   total.textContent = money(entry.total);
@@ -354,8 +351,8 @@ function renderArchiveEntry(entry) {
         const t = prompt('Názov nákupu', entry.title);
         if (t && t.trim()) act('/api/archive/' + entry.id, { method: 'PATCH', body: { title: t } });
       }, 'ghost small'),
-      button('Vrátiť medzi kúpené', 'Vrátiť nákup z archívu', () => {
-        if (confirm('Vrátiť „' + entry.title + '“ z archívu späť medzi kúpené?')) {
+      button('Vrátiť do košíka', 'Vrátiť nákup späť do košíka', () => {
+        if (confirm('Vrátiť „' + entry.title + '“ späť do košíka? Nákup zmizne z archívu.')) {
           act('/api/archive/' + entry.id + '?action=reopen', { method: 'POST' });
         }
       }, 'ghost small'),
@@ -367,23 +364,26 @@ function renderArchiveEntry(entry) {
 
 // ---------- Vykreslenie ----------
 function render() {
-  for (const group of $$('.group')) {
+  for (const group of $$('.group[data-status]')) {
     const status = group.dataset.status;
     const items = state.items.filter((i) => i.status === status);
     $('.list', group).replaceChildren(...items.map(renderItem));
     $('.empty', group).hidden = items.length > 0;
     $('.count', group).textContent = items.length ? '(' + items.length + ')' : '';
-    for (const b of $$('[data-move], #finalize-btn', group)) b.hidden = !isAdmin() || items.length === 0;
+    for (const b of $$('[data-move], #purchase-btn', group)) b.hidden = !isAdmin() || items.length === 0;
     $('#sum-' + status).textContent = money(sum(items));
-    if (status === 'bought') {
-      $('.vote-hint', group).hidden = items.length === 0;
-      $('.split-slot', group).replaceChildren(...(items.length ? [renderSplit(items)] : []));
-    }
   }
   $('#prices-updated').textContent = state.pricesUpdatedAt ? 'Ceny z ' + dateTime(state.pricesUpdatedAt) : '';
 
   const archive = state.archive || [];
-  $('#archive-list').replaceChildren(...archive.map(renderArchiveEntry));
+  // Aktuálny nákup (posledný kúpený) je na prvej stránke, kým David neklikne "Nový nákup".
+  const current = archive.find((a) => a.id === state.currentPurchaseId);
+  $('#current-section').hidden = !current;
+  $('#current-slot').replaceChildren(...(current ? [renderArchiveEntry(current, true)] : []));
+  $('#new-purchase-btn').hidden = !isAdmin() || !current;
+  $('#sum-current').textContent = money(current ? current.total : 0);
+
+  $('#archive-list').replaceChildren(...archive.map((a) => renderArchiveEntry(a)));
   $('#archive-empty').hidden = archive.length > 0;
   $('#archive-total').textContent = archive.length
     ? archive.length + ' nákupov · spolu ' + money(archive.reduce((s, a) => s + a.total, 0))
@@ -419,15 +419,21 @@ for (const b of $$('[data-move]')) {
   });
 }
 
-$('#finalize-btn').addEventListener('click', async () => {
-  const bought = state.items.filter((i) => i.status === 'bought');
+$('#purchase-btn').addEventListener('click', async () => {
+  const cart = state.items.filter((i) => i.status === 'in_cart');
   const title = prompt(
-    'Sfinalizovať ' + bought.length + ' kúpených položiek za ' + money(sum(bought)) + ' a presunúť do archívu.\n\nNázov nákupu:',
+    'Kúpené: ' + cart.length + ' položiek za ' + money(sum(cart)) + '.\n' +
+      'Nákup sa uloží do archívu a ostane na prvej stránke na hlasovanie, kto čo zjedol.\n\nNázov nákupu:',
     'Nákup ' + new Date().toLocaleDateString('sk-SK'),
   );
   if (title === null) return;
-  const res = await act('/api/shopping/finalize', { method: 'POST', body: { title } });
-  if (res) location.hash = '#archiv';
+  const res = await act('/api/shopping/purchase', { method: 'POST', body: { title } });
+  if (res) setTimeout(() => $('#current-section').scrollIntoView({ behavior: 'smooth' }), 300);
+});
+
+$('#new-purchase-btn').addEventListener('click', () => {
+  if (!confirm('Začať nový nákup? Aktuálny nákup zmizne z prvej stránky a ostane iba v archíve (hlasovať sa dá ďalej tam).')) return;
+  act('/api/shopping/new-purchase', { method: 'POST' });
 });
 
 $('#refresh-btn').addEventListener('click', async () => {
