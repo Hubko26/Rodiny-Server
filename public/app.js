@@ -465,10 +465,11 @@ $('#name-form').addEventListener('submit', (e) => {
 
 $('#user-btn').addEventListener('click', showNameScreen);
 
-$('#logout-btn').addEventListener('click', async () => {
+async function logout() {
   try { await api('/api/logout', { method: 'POST' }); } catch {}
   showLogin();
-});
+}
+for (const id of ['#logout-btn', '#logout-top', '#logout-name']) $(id).addEventListener('click', logout);
 
 // ---------- Štart ----------
 (async () => {
