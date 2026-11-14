@@ -46,7 +46,21 @@ function showOnly(id) {
 function showLogin() {
   if (events) { events.close(); events = null; }
   showOnly('login');
-  $('#password').focus();
+  let saved = '';
+  try { saved = localStorage.getItem(NAME_KEY) || ''; } catch {}
+  if (saved && !$('#login-name').value) $('#login-name').value = saved;
+  (saved ? $('#password') : $('#login-name')).focus();
+}
+
+// Ponúkne uloženie mena a hesla do správcu hesiel prehliadača (Chrome, Edge, Android…).
+// Funguje iba na HTTPS alebo localhost; inde sa ticho preskočí a ostane bežné automatické vyplnenie.
+async function offerSavePassword(name, password) {
+  if (!window.PasswordCredential || !navigator.credentials) return;
+  try {
+    // Správca má v kľúčenke iné "používateľské meno", aby sa neprepísalo s rodinným heslom.
+    const id = me.role === 'admin' ? me.adminName + ' (správca)' : name;
+    await navigator.credentials.store(new PasswordCredential({ id, password, name: id }));
+  } catch {}
 }
 function showNameScreen() {
   showOnly('name-screen');
@@ -447,7 +461,12 @@ $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('#login-error').textContent = '';
   try {
-    me = await api('/api/login', { method: 'POST', body: { password: $('#password').value } });
+    const name = $('#login-name').value.trim();
+    const password = $('#password').value;
+    me = await api('/api/login', { method: 'POST', body: { password } });
+    // Meno z prihlásenia sa použije ako meno v aplikácii (správca má vždy svoje meno).
+    if (me.role !== 'admin' && name) setName(name);
+    await offerSavePassword(name, password);
     $('#password').value = '';
     showApp();
   } catch (err) {

@@ -12,11 +12,14 @@
 <body>
   <!-- Prihlásenie -->
   <section id="login" class="screen" hidden>
-    <form id="login-form" class="card login-card">
+    <!-- Pole "username" + "current-password" a POST formulár: podľa toho Chrome a správcovia
+         hesiel spoznajú prihlásenie a ponúknu uloženie hesla. -->
+    <form id="login-form" class="card login-card" method="post" action="/api/login">
       <img src="icon.svg" alt="" class="login-icon">
       <h1>Rodinný server</h1>
-      <p class="muted">Zadaj heslo, ktoré si dostal od rodiny.</p>
-      <input id="password" type="password" placeholder="Heslo" autocomplete="current-password" required>
+      <p class="muted">Zadaj svoje meno a heslo, ktoré si dostal od rodiny.</p>
+      <input id="login-name" name="username" type="text" maxlength="40" placeholder="Tvoje meno" autocomplete="username" autocapitalize="words" required>
+      <input id="password" name="password" type="password" placeholder="Heslo" autocomplete="current-password" required>
       <button type="submit" class="primary">Vstúpiť</button>
       <p id="login-error" class="error" role="alert"></p>
     </form>
