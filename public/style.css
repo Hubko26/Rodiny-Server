@@ -106,7 +106,7 @@ button:disabled { opacity: .5; cursor: default; }
 #user-btn:disabled { opacity: 1; }
 @media (max-width: 520px) { .brand span { display: none; } .topbar { gap: 8px; } .logout-text { display: none; } }
 
-.content { max-width: 760px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+.content { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
 
 /* Pridanie */
 .add-card { display: grid; gap: 8px; }
@@ -206,7 +206,31 @@ a.name[href]:hover { text-decoration: underline; }
 .split-list .num { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .split-list .me { font-weight: 700; }
 .split-list .total { border-top: 2px solid var(--line); font-weight: 700; }
-.archive-entry .split { margin: 8px 16px 0; box-shadow: none; background: var(--bg); }
+/* Nákup: položky vľavo, výdavky a vyúčtovanie vpravo */
+.purchase-body { display: grid; gap: 12px; }
+.purchase-side { display: grid; gap: 12px; align-content: start; padding: 0 16px; }
+@media (min-width: 900px) {
+  .purchase-body { grid-template-columns: minmax(0, 1fr) 340px; }
+  .purchase-side { padding: 10px 16px 0 0; position: sticky; top: 64px; align-self: start; }
+}
+.purchase-side .card { box-shadow: none; background: var(--bg); padding: 12px; }
+.split-name { display: block; font-weight: 600; }
+.split-detail { display: block; font-size: 12px; }
+.split-list li { align-items: center; }
+.split-list .num small { font-weight: 400; }
+.split-list .owes { color: var(--warn); }
+.split-list .gets { color: var(--accent); }
+.split-list .even { color: var(--muted); font-weight: 400; }
+.split .hint, .expenses .hint { margin: 0; }
+.expense-list { list-style: none; margin: 0; padding: 0; }
+.expense-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.expense-list li:last-child { border-bottom: 0; }
+.expense-right { display: flex; align-items: center; gap: 6px; }
+.small-icon { width: 26px; height: 26px; font-size: 12px; }
+.expense-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.expense-form input { padding: 8px 10px; font-size: 14px; }
+.expense-form input:nth-child(2) { grid-column: 1 / -1; grid-row: 1; }
+.expense-form button { padding: 8px 12px; grid-column: 1 / -1; }
 
 .badge { display: inline-block; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 700; vertical-align: middle; }
 .archive-entry.is-current { border-color: var(--accent); }
@@ -237,7 +261,7 @@ a.name[href]:hover { text-decoration: underline; }
 .empty { text-align: center; padding: 24px 0; }
 
 .footer {
-  max-width: 760px; margin: 0 auto; padding: 8px 16px 32px;
+  max-width: 1100px; margin: 0 auto; padding: 8px 16px 32px;
   display: flex; align-items: center; gap: 8px;
 }
 .footer .ghost { margin-left: auto; }

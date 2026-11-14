@@ -232,12 +232,17 @@ function voteWidget(item, archiveId) {
   return [btn, chips];
 }
 
-// Rozdelí ceny položiek medzi hlasujúcich rovným dielom.
-function computeSplit(items) {
-  const people = new Map();
+// ---------- Vyúčtovanie nákupu ----------
+// Jedlo: cena položky sa delí rovným dielom medzi tých, čo hlasovali; bez hlasu platí správca.
+// Spoločné výdavky: delia sa rovným dielom medzi všetkých v nákupe, platiteľovi sa odpočítajú.
+// Nákup na Rohlíku zaplatil správca, preto sa mu jeho suma tiež odpočíta.
+// Bilancia > 0 = dopláca, < 0 = dostane späť. Súčet bilancií je vždy 0.
+function computeSplit(entry) {
+  const admin = me.adminName;
+  const food = new Map();
   let unassigned = 0;
   let unassignedCount = 0;
-  for (const item of items) {
+  for (const item of entry.items) {
     const total = lineTotal(item);
     const eaters = item.eaters || [];
     if (!eaters.length) {
@@ -245,56 +250,158 @@ function computeSplit(items) {
       unassignedCount++;
       continue;
     }
-    for (const name of eaters) people.set(name, (people.get(name) || 0) + total / eaters.length);
+    for (const name of eaters) food.set(name, (food.get(name) || 0) + total / eaters.length);
   }
-  // Za položky, za ktoré nikto nehlasoval, platí správca (David).
-  if (unassignedCount) people.set(me.adminName, (people.get(me.adminName) || 0) + unassigned);
-  const rows = [...people].sort((a, b) => b[1] - a[1]);
-  return { rows, unassigned, unassignedCount, total: sum(items) };
+  if (unassignedCount) food.set(admin, (food.get(admin) || 0) + unassigned);
+
+  const expenses = entry.expenses || [];
+  const people = new Set([admin, ...food.keys(), ...expenses.map((x) => x.payer)]);
+  const expensesTotal = expenses.reduce((s, x) => s + x.amount, 0);
+  const expenseShare = people.size ? expensesTotal / people.size : 0;
+  const foodTotal = sum(entry.items);
+
+  const rows = [...people].map((name) => {
+    const paidExpenses = expenses.filter((x) => x.payer === name).reduce((s, x) => s + x.amount, 0);
+    const paidShop = name === admin ? foodTotal : 0;
+    const f = food.get(name) || 0;
+    const paid = paidExpenses + paidShop;
+    return { name, food: f, expenses: expenseShare, paid, balance: f + expenseShare - paid };
+  });
+  rows.sort((a, b) => b.balance - a.balance);
+  return { rows, unassigned, unassignedCount, foodTotal, expensesTotal, people: people.size };
 }
 
-function renderSplit(items) {
-  const { rows, unassigned, unassignedCount, total } = computeSplit(items);
-  const box = document.createElement('div');
-  box.className = 'split card';
-  const head = document.createElement('div');
-  head.className = 'split-head';
-  head.textContent = 'Kto koľko platí';
-  box.append(head);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
 
-  const list = document.createElement('ul');
-  list.className = 'split-list';
-  const row = (label, amount, cls = '', note = '') => {
-    const li = document.createElement('li');
-    if (cls) li.className = cls;
-    const a = document.createElement('span');
-    a.textContent = label;
-    if (note) {
-      const n = document.createElement('small');
-      n.className = 'muted';
-      n.textContent = note;
-      a.append(document.createElement('br'), n);
+function renderSplit(entry) {
+  const s = computeSplit(entry);
+  const box = el('div', 'split card');
+  box.append(el('div', 'split-head', 'Kto koľko platí'));
+
+  const list = el('ul', 'split-list');
+  for (const r of s.rows) {
+    const li = el('li', r.name === getName() ? 'me' : '');
+    const left = el('span');
+    left.append(el('span', 'split-name', r.name));
+    const parts = ['jedlo ' + money(r.food)];
+    if (s.expensesTotal) parts.push('výdavky ' + money(r.expenses));
+    if (r.paid) parts.push('zaplatil(a) ' + money(r.paid));
+    left.append(el('small', 'muted split-detail', parts.join(' · ')));
+    if (r.name === me.adminName && s.unassignedCount) {
+      left.append(el('small', 'muted split-detail', `jedlo vrátane ${money(s.unassigned)} za ${s.unassignedCount} ${plural(s.unassignedCount)} bez hlasu`));
     }
-    const b = document.createElement('span');
-    b.className = 'num';
-    b.textContent = money(amount);
-    li.append(a, b);
+    const right = el('span', 'num');
+    if (Math.abs(r.balance) < 0.005) {
+      right.textContent = 'vyrovnané';
+      right.classList.add('even');
+    } else if (r.balance > 0) {
+      right.append(el('small', 'muted', 'dopláca '), document.createTextNode(money(r.balance)));
+      right.classList.add('owes');
+    } else {
+      right.append(el('small', 'muted', 'dostane '), document.createTextNode(money(-r.balance)));
+      right.classList.add('gets');
+    }
+    li.append(left, right);
     list.append(li);
-  };
-  const plural = (n) => (n === 1 ? 'položka' : n < 5 ? 'položky' : 'položiek');
-  for (const [name, amount] of rows) {
-    const note = name === me.adminName && unassignedCount
-      ? `vrátane ${money(unassigned)} za ${unassignedCount} ${plural(unassignedCount)}, za ktoré nikto nehlasoval`
-      : '';
-    row(name, amount, name === getName() ? 'me' : '', note);
   }
-  row('Spolu', total, 'total');
+  const total = el('li', 'total');
+  total.append(
+    el('span', '', s.expensesTotal ? 'Nákup + výdavky' : 'Nákup spolu'),
+    el('span', 'num', s.expensesTotal ? `${money(s.foodTotal)} + ${money(s.expensesTotal)}` : money(s.foodTotal)),
+  );
+  list.append(total);
   box.append(list);
+  box.append(el('p', 'hint', `Nákup na Rohlíku zaplatil ${me.adminName}. Výdavky sa delia medzi ${s.people} ${s.people === 1 ? 'osobu' : 'osoby/osôb'} rovným dielom.`));
   return box;
 }
+function plural(n) {
+  return n === 1 ? 'položka' : n < 5 ? 'položky' : 'položiek';
+}
 
-function patch(item, body) {
-  return act('/api/shopping/items/' + item.id, { method: 'PATCH', body });
+// Spoločné výdavky: formulár + zoznam (vpravo vedľa nákupu).
+const expenseDrafts = new Map(); // id nákupu -> rozpísané hodnoty formulára
+function renderExpenses(entry) {
+  const box = el('div', 'expenses card');
+  box.append(el('div', 'split-head', 'Spoločné výdavky'));
+  box.append(el('p', 'hint', 'Zaplatil niekto niečo za celú skupinu (drevo, benzín, chata…)? Zapíš to sem, rozpočíta sa medzi všetkých.'));
+
+  const list = el('ul', 'expense-list');
+  for (const x of entry.expenses || []) {
+    const li = el('li');
+    const left = el('span');
+    left.append(el('span', 'split-name', x.description), el('small', 'muted split-detail', 'zaplatil(a) ' + x.payer));
+    const right = el('span', 'expense-right');
+    right.append(el('span', 'num', money(x.amount)));
+    if (isAdmin() || getName() === x.addedBy || getName() === x.payer) {
+      right.append(button('✕', 'Zmazať výdavok', () => {
+        if (confirm('Zmazať výdavok „' + x.description + '“ (' + money(x.amount) + ')?')) {
+          act('/api/archive/' + entry.id + '/expenses/' + x.id, { method: 'DELETE', body: { name: getName() } });
+        }
+      }, 'icon-btn danger small-icon'));
+    }
+    li.append(left, right);
+    list.append(li);
+  }
+  if (!(entry.expenses || []).length) list.append(el('li', 'muted', 'Zatiaľ žiadne výdavky.'));
+  box.append(list);
+
+  const form = el('form', 'expense-form');
+  const payer = el('input');
+  payer.placeholder = 'Kto zaplatil';
+  payer.maxLength = 40;
+  payer.value = getName();
+  payer.setAttribute('aria-label', 'Kto zaplatil');
+  const desc = el('input');
+  desc.placeholder = 'Za čo (napr. drevo)';
+  desc.maxLength = 60;
+  desc.required = true;
+  desc.setAttribute('aria-label', 'Za čo');
+  const amount = el('input');
+  amount.type = 'number';
+  amount.inputMode = 'decimal';
+  amount.min = '0.01';
+  amount.step = '0.01';
+  amount.placeholder = 'Kč';
+  amount.required = true;
+  amount.setAttribute('aria-label', 'Suma v Kč');
+  const submit = el('button', 'primary small', 'Pridať');
+  submit.type = 'submit';
+  form.append(payer, desc, amount, submit);
+
+  // Live aktualizácia prekresľuje stránku: rozpísaný výdavok a kurzor sa musia zachovať.
+  const draft = expenseDrafts.get(entry.id);
+  const fields = { payer, desc, amount };
+  for (const [key, input] of Object.entries(fields)) {
+    input.dataset.draft = entry.id + ':' + key;
+    if (draft && draft[key] !== undefined) input.value = draft[key];
+    input.addEventListener('input', () => {
+      const d = expenseDrafts.get(entry.id) || {};
+      d[key] = input.value;
+      expenseDrafts.set(entry.id, d);
+    });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    submit.disabled = true;
+    const res = await act('/api/archive/' + entry.id + '/expenses', {
+      method: 'POST',
+      body: { payer: payer.value, description: desc.value, amount: amount.value, name: getName() },
+    });
+    submit.disabled = false;
+    if (res) {
+      expenseDrafts.delete(entry.id);
+      desc.value = '';
+      amount.value = '';
+    }
+  });
+  box.append(form);
+  return box;
 }
 
 // ---------- Archív ----------
@@ -309,64 +416,50 @@ function renderArchiveEntry(entry, current = false) {
     if (details.open) openArchive.add(entry.id); else openArchive.delete(entry.id);
   });
 
+  const expensesTotal = (entry.expenses || []).reduce((s, x) => s + x.amount, 0);
   const summary = document.createElement('summary');
-  const title = document.createElement('div');
-  title.className = 'archive-title';
-  title.textContent = entry.title;
-  const meta = document.createElement('div');
-  meta.className = 'muted small-text';
-  meta.textContent = 'kúpené ' + dateTime(entry.finalizedAt) + ' · ' + entry.items.length + ' položiek';
-  const left = document.createElement('div');
+  const title = el('div', 'archive-title', entry.title);
+  const metaParts = ['kúpené ' + dateTime(entry.finalizedAt), entry.items.length + ' položiek'];
+  if (expensesTotal) metaParts.push('výdavky ' + money(expensesTotal));
+  const meta = el('div', 'muted small-text', metaParts.join(' · '));
+  const left = el('div');
   left.append(title, meta);
-  if (!current && entry.id === state.currentPurchaseId) {
-    const badge = document.createElement('span');
-    badge.className = 'badge';
-    badge.textContent = 'aktuálny';
-    title.append(' ', badge);
-  }
-  const total = document.createElement('div');
-  total.className = 'archive-total';
-  total.textContent = money(entry.total);
-  summary.append(left, total);
+  if (!current && entry.id === state.currentPurchaseId) title.append(' ', el('span', 'badge', 'aktuálny'));
+  summary.append(left, el('div', 'archive-total', money(entry.total)));
   details.append(summary);
 
-  const table = document.createElement('ul');
-  table.className = 'archive-items';
+  const table = el('ul', 'archive-items');
   for (const item of entry.items) {
-    const row = document.createElement('li');
-    const name = document.createElement(item.url ? 'a' : 'span');
+    const row = el('li');
+    const name = el(item.url ? 'a' : 'span', '', item.name);
     if (item.url) { name.href = item.url; name.target = '_blank'; name.rel = 'noopener'; }
-    name.textContent = item.name;
-    const amount = document.createElement('span');
-    amount.className = 'muted';
-    amount.textContent = item.amount || '';
-    const qty = document.createElement('span');
-    qty.className = 'num';
-    qty.textContent = item.qty + '×';
-    const price = document.createElement('span');
-    price.className = 'num';
-    price.textContent = money(lineTotal(item));
-    const votes = document.createElement('div');
-    votes.className = 'votes';
+    const votes = el('div', 'votes');
     votes.append(...voteWidget(item, entry.id));
-    row.append(name, amount, qty, price, votes);
+    row.append(name, el('span', 'muted', item.amount || ''), el('span', 'num', item.qty + '×'), el('span', 'num', money(lineTotal(item))), votes);
     table.append(row);
   }
-  const hint = document.createElement('p');
-  hint.className = 'hint archive-hint';
-  hint.textContent = 'Klikni na 🍽 Jedol(a) som pri všetkom, čo si jedol/pil. Za položky bez hlasu platí ' + me.adminName + '.';
-  details.append(hint, table, renderSplit(entry.items));
+  const main = el('div', 'purchase-main');
+  main.append(
+    el('p', 'hint archive-hint', 'Klikni na 🍽 Jedol(a) som pri všetkom, čo si jedol/pil. Za položky bez hlasu platí ' + me.adminName + '.'),
+    table,
+  );
+  // Vpravo vedľa nákupu: spoločné výdavky a vyúčtovanie.
+  const side = el('aside', 'purchase-side');
+  side.append(renderExpenses(entry), renderSplit(entry));
+  const body = el('div', 'purchase-body');
+  body.append(main, side);
+  details.append(body);
 
   if (isAdmin()) {
-    const bar = document.createElement('div');
-    bar.className = 'archive-actions';
+    const bar = el('div', 'archive-actions');
     bar.append(
       button('Premenovať', 'Premenovať nákup', () => {
         const t = prompt('Názov nákupu', entry.title);
         if (t && t.trim()) act('/api/archive/' + entry.id, { method: 'PATCH', body: { title: t } });
       }, 'ghost small'),
       button('Vrátiť do košíka', 'Vrátiť nákup späť do košíka', () => {
-        if (confirm('Vrátiť „' + entry.title + '“ späť do košíka? Nákup zmizne z archívu.')) {
+        const warn = (entry.expenses || []).length ? ' Spoločné výdavky pri ňom sa zmažú.' : '';
+        if (confirm('Vrátiť „' + entry.title + '“ späť do košíka? Nákup zmizne z archívu.' + warn)) {
           act('/api/archive/' + entry.id + '?action=reopen', { method: 'POST' });
         }
       }, 'ghost small'),
@@ -378,6 +471,19 @@ function renderArchiveEntry(entry, current = false) {
 
 // ---------- Vykreslenie ----------
 function render() {
+  // Zapamätať, v ktorom políčku výdavku bol kurzor, aby ho prekreslenie nezrušilo.
+  const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.draft : null;
+  renderAll();
+  if (focused) {
+    const target = $$('[data-draft]').find((i) => i.dataset.draft === focused && i.offsetParent !== null);
+    if (target) {
+      target.focus();
+      try { target.setSelectionRange(target.value.length, target.value.length); } catch {}
+    }
+  }
+}
+
+function renderAll() {
   for (const group of $$('.group[data-status]')) {
     const status = group.dataset.status;
     const items = state.items.filter((i) => i.status === status);

@@ -508,6 +508,44 @@ async function handleApi(req, res, url) {
     return send(res, 200, { eaters: item.eaters });
   }
 
+  // Spoločné výdavky pri nákupe: niekto zaplatil za skupinu (napr. drevo, benzín).
+  // Suma sa delí rovným dielom medzi všetkých v nákupe a platiteľovi sa odpočíta.
+  const expenseMatch = pathname.match(/^\/api\/archive\/([\w-]+)\/expenses(?:\/([\w-]+))?$/);
+  if (expenseMatch) {
+    const entry = data.archive.find((a) => a.id === expenseMatch[1]);
+    if (!entry) return send(res, 404, { error: 'Nákup neexistuje.' });
+    entry.expenses = Array.isArray(entry.expenses) ? entry.expenses : [];
+    const body = await readBody(req);
+    const me = isAdmin ? ADMIN_NAME : cleanName(body.name);
+
+    if (!expenseMatch[2] && method === 'POST') {
+      const payer = cleanName(body.payer) || me;
+      const description = String(body.description || '').trim().slice(0, 60);
+      const amount = Math.round(Number(String(body.amount).replace(',', '.')) * 100) / 100;
+      if (!payer) return send(res, 400, { error: 'Napíš, kto zaplatil.' });
+      if (!description) return send(res, 400, { error: 'Napíš, za čo sa platilo.' });
+      if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
+        return send(res, 400, { error: 'Suma musí byť číslo od 0,01 do 100 000 Kč.' });
+      }
+      if (entry.expenses.length >= 50) return send(res, 400, { error: 'Príliš veľa výdavkov pri jednom nákupe.' });
+      const expense = { id: crypto.randomUUID(), payer, description, amount, addedBy: me, addedAt: new Date().toISOString() };
+      entry.expenses.push(expense);
+      saveData();
+      return send(res, 201, { expense });
+    }
+
+    if (expenseMatch[2] && method === 'DELETE') {
+      const expense = entry.expenses.find((x) => x.id === expenseMatch[2]);
+      if (!expense) return send(res, 404, { error: 'Výdavok neexistuje.' });
+      // Zmazať môže správca alebo ten, kto výdavok zapísal / zaplatil.
+      if (!isAdmin && me !== expense.addedBy && me !== expense.payer) return adminOnly();
+      entry.expenses = entry.expenses.filter((x) => x !== expense);
+      saveData();
+      return send(res, 200, { ok: true });
+    }
+    return send(res, 405, { error: 'Nepodporovaná akcia.' });
+  }
+
   const archiveMatch = pathname.match(/^\/api\/archive\/([\w-]+)$/);
   if (archiveMatch) {
     if (!isAdmin) return adminOnly();
